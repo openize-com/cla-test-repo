@@ -1,0 +1,50 @@
+name: Blog CLA Contributor
+
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  post-to-wordpress:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+
+    env:
+      WP_TOKEN: ${{ secrets.WP_TOKEN }}
+      WP_SITE: ${{ secrets.WP_SITE }}
+
+    steps:
+      - name: Check if CLA is signed
+        id: check_cla
+        run: |
+          echo "Checking CLA label..."
+          LABELS="${{ toJson(github.event.pull_request.labels) }}"
+          echo "$LABELS" | grep -i 'license/cla' && echo "CLA=true" >> $GITHUB_ENV || echo "CLA=false" >> $GITHUB_ENV
+
+      - name: Post to WordPress (avoid duplicates)
+        if: env.CLA == 'true'
+        run: |
+          LOGIN="${{ github.event.pull_request.user.login }}"
+          AVATAR="https://github.com/$LOGIN.png"
+          PROFILE="https://github.com/$LOGIN"
+          REPO="${{ github.repository }}"
+          TITLE="New Contributor: @$LOGIN"
+          CONTENT="<p><a href=\"$PROFILE\">@$LOGIN</a> signed the CLA and contributed to <code>$REPO</code>.</p><p><img src=\"$AVATAR\" style=\"max-width:100px;border-radius:50%;\" /></p>"
+
+          echo "Checking WordPress for existing post about @$LOGIN..."
+
+          EXISTS=$(curl -s -G \
+            -H "Authorization: Bearer $WP_TOKEN" \
+            --data-urlencode "search=@$LOGIN" \
+            "https://public-api.wordpress.com/rest/v1.1/sites/$WP_SITE/posts/" \
+            | jq '.posts | map(select(.title | contains("@'"$LOGIN"'"))) | length')
+
+          if [ "$EXISTS" -eq 0 ]; then
+            echo "No post found. Publishing..."
+            curl -X POST https://public-api.wordpress.com/rest/v1.1/sites/$WP_SITE/posts/new \
+              -H "Authorization: Bearer $WP_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d "$(jq -n --arg title "$TITLE" --arg content "$CONTENT" '{title: $title, content: $content, status: "publish"}')"
+          else
+            echo "Contributor @$LOGIN already has a blog post. Skipping."
+          fi
