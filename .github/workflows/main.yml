@@ -15,38 +15,19 @@ jobs:
       WP_SITE: ${{ secrets.WP_SITE }}
 
     steps:
-      - name: Check if CLA check passed (via REST API)
+      - name: Check if CLA label exists
         id: cla_check
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const pr = context.payload.pull_request;
-            const ref = pr.head.sha;
-
-            const url = `https://api.github.com/repos/${context.repo.owner}/${context.repo.repo}/commits/${ref}/check-runs`;
-            const res = await fetch(url, {
-              headers: {
-                Authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
-                Accept: 'application/vnd.github.v3+json'
-              }
-            });
-
-            const data = await res.json();
-
-            console.log("🔍 Found check runs:");
-            data.check_runs.forEach(run => {
-              console.log(`- ${run.name}: ${run.conclusion}`);
-            });
-
-            // Match any check run that contains 'cla' in its name and succeeded
-            const passedCLA = data.check_runs.some(run =>
-              run.name.toLowerCase().includes('cla') && run.conclusion === 'success'
-            );
-
-            console.log("✅ CLA check passed:", passedCLA);
-            core.setOutput("cla_passed", passedCLA);
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "🔍 Checking for CLA label..."
+          LABELS_JSON='${{ toJson(github.event.pull_request.labels) }}'
+          echo "PR Labels: $LABELS_JSON"
+          if echo "$LABELS_JSON" | grep -iq 'license/cla'; then
+            echo "✅ CLA label found."
+            echo "cla_passed=true" >> $GITHUB_OUTPUT
+          else
+            echo "❌ CLA label not found."
+            echo "cla_passed=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: Post to WordPress (avoid duplicates)
         if: steps.cla_check.outputs.cla_passed == 'true'
