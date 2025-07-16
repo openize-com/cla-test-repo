@@ -39,8 +39,8 @@ jobs:
 
             console.log("CLA check passed:", passedCLA);
             core.setOutput("cla_passed", passedCLA);
-          env:
-            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Post to WordPress (avoid duplicates)
         if: steps.cla_check.outputs.cla_passed == 'true'
