@@ -3,7 +3,9 @@ name: Blog CLA Contributor
 on:
   pull_request:
     types: [closed]
-
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+  
 jobs:
   post-to-wordpress:
     if: github.event.pull_request.merged == true
