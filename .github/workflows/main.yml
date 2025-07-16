@@ -1,13 +1,8 @@
-name: Blog CLA Contributor
+name: Blog Contributor
 
 on:
   pull_request:
     types: [closed]
-  workflow_dispatch:
-
-permissions:
-  contents: read
-  checks: read
 
 jobs:
   post-to-wordpress:
@@ -19,54 +14,14 @@ jobs:
       WP_SITE: ${{ secrets.WP_SITE }}
 
     steps:
-      - name: Check if CLA check run passed
-        id: cla_check
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const pr = context.payload.pull_request;
-            const ref = pr.head.sha;
-
-            console.log(`🔍 Fetching check runs for commit: ${ref}`);
-
-            const res = await github.request(
-              'GET /repos/{owner}/{repo}/commits/{ref}/check-runs',
-              {
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                ref
-              }
-            );
-
-            const checkRuns = res.data.check_runs;
-
-            if (checkRuns.length === 0) {
-              console.log("⚠️ No check runs found.");
-              core.setOutput("cla_passed", false);
-              return;
-            }
-
-            console.log("✅ Found check runs:");
-            checkRuns.forEach(run => {
-              console.log(`- ${run.name} (${run.status}): ${run.conclusion}`);
-            });
-
-            const passedCLA = checkRuns.some(run =>
-              run.name.toLowerCase().includes('cla') && run.conclusion === 'success'
-            );
-
-            console.log("✅ CLA check passed:", passedCLA);
-            core.setOutput("cla_passed", passedCLA.toString());
-
       - name: Post to WordPress (avoid duplicates)
-        if: steps.cla_check.outputs.cla_passed == 'true'
         run: |
           LOGIN="${{ github.event.pull_request.user.login }}"
           AVATAR="https://github.com/$LOGIN.png"
           PROFILE="https://github.com/$LOGIN"
           REPO="${{ github.repository }}"
           TITLE="New Contributor: @$LOGIN"
-          CONTENT="<p><a href=\"$PROFILE\">@$LOGIN</a> signed the CLA and contributed to <code>$REPO</code>.</p><p><img src=\"$AVATAR\" style=\"max-width:100px;border-radius:50%;\" /></p>"
+          CONTENT="<p><a href=\"$PROFILE\">@$LOGIN</a> contributed to <code>$REPO</code>.</p><p><img src=\"$AVATAR\" style=\"max-width:100px;border-radius:50%;\" /></p>"
 
           echo "🔍 Checking WordPress for existing post about @$LOGIN..."
 
