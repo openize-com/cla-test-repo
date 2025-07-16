@@ -5,6 +5,10 @@ on:
     types: [closed]
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pull-requests: read
+
 jobs:
   post-to-wordpress:
     if: github.event.pull_request.merged == true
@@ -15,18 +19,26 @@ jobs:
       WP_SITE: ${{ secrets.WP_SITE }}
 
     steps:
-      - name: Check if CLA label exists
+      - name: Fetch latest PR labels from GitHub API
         id: cla_check
         run: |
-          echo "🔍 Checking for CLA label..."
-          LABELS_JSON='${{ toJson(github.event.pull_request.labels) }}'
-          echo "PR Labels: $LABELS_JSON"
-          if echo "$LABELS_JSON" | grep -iq 'license/cla'; then
-            echo "✅ CLA label found."
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          REPO="${{ github.repository }}"
+          echo "🔍 Fetching labels for PR #$PR_NUMBER from GitHub API..."
+
+          LABELS=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/$REPO/issues/$PR_NUMBER/labels" \
+            | jq -r '.[].name')
+
+          echo "Fetched labels:"
+          echo "$LABELS"
+
+          if echo "$LABELS" | grep -iq 'license/cla'; then
             echo "cla_passed=true" >> $GITHUB_OUTPUT
+            echo "✅ CLA label found via GitHub API."
           else
-            echo "❌ CLA label not found."
             echo "cla_passed=false" >> $GITHUB_OUTPUT
+            echo "❌ CLA label NOT found via GitHub API."
           fi
 
       - name: Post to WordPress (avoid duplicates)
