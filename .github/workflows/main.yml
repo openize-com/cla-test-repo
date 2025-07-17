@@ -1,124 +1,37 @@
-name: Blog Contributor
+name: Blog CLA Contributor
 
 on:
   pull_request:
     types: [closed]
 
 jobs:
-  post-to-wordpress:
+  check-cla-status:
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
 
-    env:
-      WP_TOKEN: ${{ secrets.WP_TOKEN }}
-      WP_SITE: ${{ secrets.WP_SITE }}
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
     steps:
-      # Step 1: Check for CLA label in event payload
-      - name: Check CLA label from event payload
-        id: cla_event_check
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check commit status for CLA
+        id: cla_commit_status
         run: |
-          echo "🔍 Checking for CLA label in event payload..."
-          LABELS_JSON='${{ toJson(github.event.pull_request.labels) }}'
-          echo "PR Labels: $LABELS_JSON"
-          if echo "$LABELS_JSON" | grep -iq 'license/cla'; then
-            echo "✅ CLA label found in payload."
+          SHA="${{ github.event.pull_request.merge_commit_sha }}"
+          REPO="${{ github.repository }}"
+          echo "🔍 Checking commit status for SHA: $SHA"
+
+          STATUS=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$REPO/commits/$SHA/status")
+
+          echo "$STATUS" | jq .
+
+          CLA_STATUS=$(echo "$STATUS" | jq -r '.statuses[] | select(.context == "license/cla") | .state')
+
+          if [ "$CLA_STATUS" == "success" ]; then
+            echo "✅ CLA check (license/cla) passed."
             echo "cla_passed=true" >> $GITHUB_OUTPUT
           else
-            echo "❌ CLA label NOT found in payload."
+            echo "❌ CLA check not passed or not found."
             echo "cla_passed=false" >> $GITHUB_OUTPUT
-          fi
-
-      # Step 2: Check for CLA label via GitHub API
-      - name: Check CLA label from GitHub API
-        id: cla_api_check
-        run: |
-          PR_NUMBER="${{ github.event.pull_request.number }}"
-          REPO="${{ github.repository }}"
-          echo "🔍 Fetching labels for PR #$PR_NUMBER from GitHub API..."
-
-          LABELS=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/$REPO/issues/$PR_NUMBER/labels" \
-            | jq -r '.[].name')
-
-          echo "Fetched labels:"
-          echo "$LABELS"
-
-          if echo "$LABELS" | grep -iq 'license/cla'; then
-            echo "✅ CLA label found via GitHub API."
-            echo "cla_passed=true" >> $GITHUB_OUTPUT
-          else
-            echo "❌ CLA label NOT found via GitHub API."
-            echo "cla_passed=false" >> $GITHUB_OUTPUT
-          fi
-
-      # Step 3: Check if CLA check run passed
-      - name: Check CLA check run
-        id: cla_check_run
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const pr = context.payload.pull_request;
-            const ref = pr.head.sha;
-
-            console.log(`🔍 Fetching check runs for commit: ${ref}`);
-            const res = await github.request(
-              'GET /repos/{owner}/{repo}/commits/{ref}/check-runs',
-              {
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                ref
-              }
-            );
-
-            const checkRuns = res.data.check_runs;
-            if (checkRuns.length === 0) {
-              console.log("⚠️ No check runs found.");
-              core.setOutput("cla_passed", false);
-              return;
-            }
-
-            console.log("✅ Found check runs:");
-            checkRuns.forEach(run => {
-              console.log(`- ${run.name} (${run.status}): ${run.conclusion}`);
-            });
-
-            const passedCLA = checkRuns.some(run =>
-              run.name.toLowerCase().includes('cla') && run.conclusion === 'success'
-            );
-
-            console.log("✅ CLA check passed:", passedCLA);
-            core.setOutput("cla_passed", passedCLA.toString());
-
-      # Step 4: Post to WordPress if any CLA check passed
-      - name: Post to WordPress (avoid duplicates)
-        if: |
-          steps.cla_event_check.outputs.cla_passed == 'true' ||
-          steps.cla_api_check.outputs.cla_passed == 'true' ||
-          steps.cla_check_run.outputs.cla_passed == 'true'
-        run: |
-          LOGIN="${{ github.event.pull_request.user.login }}"
-          AVATAR="https://github.com/$LOGIN.png"
-          PROFILE="https://github.com/$LOGIN"
-          REPO="${{ github.repository }}"
-          TITLE="New Contributor: @$LOGIN"
-          CONTENT="<p><a href=\"$PROFILE\">@$LOGIN</a> signed the CLA and contributed to <code>$REPO</code>.</p><p><img src=\"$AVATAR\" style=\"max-width:100px;border-radius:50%;\" /></p>"
-
-          echo "🔍 Checking WordPress for existing post about @$LOGIN..."
-
-          EXISTS=$(curl -s -G \
-            -H "Authorization: Bearer $WP_TOKEN" \
-            --data-urlencode "search=@$LOGIN" \
-            "https://public-api.wordpress.com/rest/v1.1/sites/$WP_SITE/posts/" \
-            | jq '.posts | map(select(.title | contains("@'"$LOGIN"'"))) | length')
-
-          if [ "$EXISTS" -eq 0 ]; then
-            echo "📝 No post found. Publishing..."
-            curl -X POST https://public-api.wordpress.com/rest/v1.1/sites/$WP_SITE/posts/new \
-              -H "Authorization: Bearer $WP_TOKEN" \
-              -H "Content-Type: application/json" \
-              -d "$(jq -n --arg title "$TITLE" --arg content "$CONTENT" '{title: $title, content: $content, status: "publish"}')"
-          else
-            echo "✅ Contributor @$LOGIN already has a blog post. Skipping."
           fi
