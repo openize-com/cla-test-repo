@@ -10,28 +10,22 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
       - name: Check commit status for CLA
-        id: cla_commit_status
         run: |
-          SHA="${{ github.event.pull_request.merge_commit_sha }}"
-          REPO="${{ github.repository }}"
-          echo "🔍 Checking commit status for SHA: $SHA"
+          MERGE_COMMIT_SHA="${{ github.event.pull_request.merge_commit_sha }}"
+          echo "🔍 Checking CLA status for Merge Commit SHA: $MERGE_COMMIT_SHA"
 
-          STATUS=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/$REPO/commits/$SHA/status")
+          STATUS_URL="https://api.github.com/repos/${{ github.repository }}/commits/$MERGE_COMMIT_SHA/status"
+          echo "Fetching: $STATUS_URL"
 
-          echo "$STATUS" | jq .
+          STATUS_JSON=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "$STATUS_URL")
+          echo "$STATUS_JSON" | jq
 
-          CLA_STATUS=$(echo "$STATUS" | jq -r '.statuses[] | select(.context == "license/cla") | .state')
+          STATE=$(echo "$STATUS_JSON" | jq -r '.state')
 
-          if [ "$CLA_STATUS" == "success" ]; then
-            echo "✅ CLA check (license/cla) passed."
-            echo "cla_passed=true" >> $GITHUB_OUTPUT
-          else
-            echo "❌ CLA check not passed or not found."
-            echo "cla_passed=false" >> $GITHUB_OUTPUT
+          if [[ "$STATE" != "success" ]]; then
+            echo "❌ CLA not signed or status not successful. Current state: $STATE"
+            exit 1
           fi
+
+          echo "✅ CLA signed and status: $STATE"
