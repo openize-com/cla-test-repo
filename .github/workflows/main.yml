@@ -10,18 +10,18 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Check commit status for CLA
+      - name: Check commit status for CLA (using PR head SHA)
         run: |
-          MERGE_COMMIT_SHA="${{ github.event.pull_request.merge_commit_sha }}"
-          echo "🔍 Checking CLA status for Merge Commit SHA: $MERGE_COMMIT_SHA"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          echo "🔍 Checking CLA status for PR Head Commit SHA: $HEAD_SHA"
 
-          STATUS_URL="https://api.github.com/repos/${{ github.repository }}/commits/$MERGE_COMMIT_SHA/status"
+          STATUS_URL="https://api.github.com/repos/${{ github.repository }}/commits/$HEAD_SHA/status"
           echo "Fetching: $STATUS_URL"
 
           STATUS_JSON=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "$STATUS_URL")
           echo "$STATUS_JSON" | jq
 
-          STATE=$(echo "$STATUS_JSON" | jq -r '.state')
+          STATE=$(echo "$STATUS_JSON" | jq -r '.statuses[] | select(.context == "license/cla") | .state')
 
           if [[ "$STATE" != "success" ]]; then
             echo "❌ CLA not signed or status not successful. Current state: $STATE"
