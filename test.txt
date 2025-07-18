@@ -5,3 +5,4 @@ Hello again..
 test post to wp.com
 email to post duplicate test
 another test email to post duplicate test using slug in email body.
+test with external gist duplicate check
