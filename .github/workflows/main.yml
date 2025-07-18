@@ -1,64 +1,23 @@
-name: Blog CLA Contributor
+name: Email CLA Contributor Post
 
 on:
   pull_request:
     types: [closed]
 
 jobs:
-  check-cla-status:
+  email-wordpress-post:
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
 
     steps:
-      - name: Check commit status for CLA (using PR head SHA)
-        id: check_cla
-        run: |
-          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
-          echo "🔍 Checking CLA status for PR Head Commit SHA: $HEAD_SHA"
-
-          STATUS_URL="https://api.github.com/repos/${{ github.repository }}/commits/$HEAD_SHA/status"
-          echo "Fetching: $STATUS_URL"
-
-          STATUS_JSON=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "$STATUS_URL")
-          echo "$STATUS_JSON" | jq
-
-          CLA_STATE=$(echo "$STATUS_JSON" | jq -r '.statuses[] | select(.context == "license/cla") | .state')
-
-          if [[ "$CLA_STATE" != "success" ]]; then
-            echo "❌ CLA not signed or status not successful. Current state: $CLA_STATE"
-            exit 1
-          fi
-
-          echo "✅ CLA signed and status: $CLA_STATE"
-          echo "cla_passed=true" >> $GITHUB_OUTPUT
-
-      - name: Post to WordPress (avoid duplicates)
-        if: steps.check_cla.outputs.cla_passed == 'true'
+      - name: Send draft blog post via email
         env:
-          WP_TOKEN: ${{ secrets.WP_TOKEN }}
-          WP_SITE: ${{ secrets.WP_SITE }}
+          EMAIL_TO: ${{ secrets.WP_POST_BY_EMAIL }}
         run: |
           LOGIN="${{ github.event.pull_request.user.login }}"
-          AVATAR="https://github.com/$LOGIN.png"
-          PROFILE="https://github.com/$LOGIN"
           REPO="${{ github.repository }}"
-          TITLE="New Contributor: @$LOGIN"
-          CONTENT="<p><a href=\"$PROFILE\">@$LOGIN</a> signed the CLA and contributed to <code>$REPO</code>.</p><p><img src=\"$AVATAR\" style=\"max-width:100px;border-radius:50%;\" /></p>"
 
-          echo "🔍 Checking WordPress for existing post about @$LOGIN..."
+          SUBJECT="New CLA Contributor: @$LOGIN"
+          BODY="[status draft]\n\n@$LOGIN signed the CLA and contributed to \`$REPO\`.\nGitHub: https://github.com/$LOGIN"
 
-          EXISTS=$(curl -s -G \
-            -H "Authorization: Bearer $WP_TOKEN" \
-            --data-urlencode "search=@$LOGIN" \
-            "https://public-api.wordpress.com/rest/v1.1/sites/$WP_SITE/posts/" \
-            | jq '.posts | map(select(.title | contains("@'"$LOGIN"'"))) | length')
-
-          if [ "$EXISTS" -eq 0 ]; then
-            echo "📝 No post found. Publishing..."
-            curl -X POST https://public-api.wordpress.com/rest/v1.1/sites/$WP_SITE/posts/new \
-              -H "Authorization: Bearer $WP_TOKEN" \
-              -H "Content-Type: application/json" \
-              -d "$(jq -n --arg title "$TITLE" --arg content "$CONTENT" '{title: $title, content: $content, status: "publish"}')"
-          else
-            echo "✅ Contributor @$LOGIN already has a blog post. Skipping."
-          fi
+          echo -e "Subject: $SUBJECT\n\n$BODY" | sendmail "$EMAIL_TO"
