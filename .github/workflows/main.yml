@@ -3,7 +3,9 @@ name: Email CLA Contributor Post
 on:
   pull_request:
     types: [closed]
-
+permissions:
+  contents: write
+  
 jobs:
   email-wordpress-post:
     if: github.event.pull_request.merged == true
