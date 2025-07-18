@@ -3,56 +3,57 @@ name: Email CLA Contributor Post
 on:
   pull_request:
     types: [closed]
+
 permissions:
-  contents: write
-  
+  contents: read
+
 jobs:
   email-wordpress-post:
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Git user
+      - name: Install tools
         run: |
-          git config user.name "cla-bot"
-          git config user.email "cla-bot@your-domain.com"
+          sudo apt-get update && sudo apt-get install -y sendmail jq curl
 
-      - name: Install sendmail
-        run: sudo apt-get update && sudo apt-get install -y sendmail
-
-      - name: Send email if not already posted
+      - name: Send CLA blog post if not already sent
         env:
           EMAIL_TO: ${{ secrets.WP_POST_BY_EMAIL }}
+          GIST_ID: ${{ secrets.GIST_ID }}
+          GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
         run: |
           LOGIN="${{ github.event.pull_request.user.login }}"
           REPO="${{ github.repository }}"
-          TRACK_FILE=".cla-posted.json"
+          GIST_API="https://api.github.com/gists/$GIST_ID"
 
-          # Create the tracking file if it doesn't exist
-          if [ ! -f "$TRACK_FILE" ]; then
-            echo "[]" > "$TRACK_FILE"
-          fi
+          echo "Checking if @$LOGIN already exists in Gist..."
 
-          # Check if contributor already exists
-          if jq -e ". | index(\"$LOGIN\")" "$TRACK_FILE" > /dev/null; then
-            echo "Contributor @$LOGIN already posted. Skipping email."
+          # Get current posted users from the Gist
+          curl -s -H "Authorization: token $GIST_TOKEN" $GIST_API > gist.json
+          FILE_NAME=$(jq -r '.files | keys[0]' gist.json)
+          CONTENT=$(jq -r ".files[\"$FILE_NAME\"].content" gist.json)
+
+          # Check if user already exists
+          if echo "$CONTENT" | jq -e ".[] | select(. == \"$LOGIN\")" > /dev/null; then
+            echo "Skipping... @$LOGIN already posted."
             exit 0
           fi
 
-          # Construct and send the email
+          # Send the email
           SUBJECT="New CLA Contributor: @$LOGIN"
           BODY="[status draft]\n\n@$LOGIN signed the CLA and contributed to \`$REPO\`.\nGitHub: https://github.com/$LOGIN"
 
           echo -e "Subject: $SUBJECT\n\n$BODY" | sendmail "$EMAIL_TO"
           echo "Email sent successfully for @$LOGIN"
 
-          # Add user to tracking file
-          jq ". + [\"$LOGIN\"]" "$TRACK_FILE" > tmp.json && mv tmp.json "$TRACK_FILE"
+          # Add to list and update Gist
+          UPDATED_JSON=$(echo "$CONTENT" | jq ". + [\"$LOGIN\"]")
+          UPDATE_PAYLOAD=$(jq -n --arg fn "$FILE_NAME" --argjson c "$UPDATED_JSON" \
+            '{files: {($fn): {content: ($c | tostring)}}}')
+          
+          curl -s -X PATCH -H "Authorization: token $GIST_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$UPDATE_PAYLOAD" $GIST_API
 
-          # Commit the updated file
-          git add "$TRACK_FILE"
-          git commit -m "Track CLA blog post for @$LOGIN"
-          git push
+          echo "Gist updated with @$LOGIN"
