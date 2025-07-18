@@ -4,7 +4,7 @@ on:
   pull_request:
     types: [closed]
 
-obs:
+jobs:
   email-wordpress-post:
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
