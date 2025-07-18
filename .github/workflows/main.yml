@@ -4,12 +4,15 @@ on:
   pull_request:
     types: [closed]
 
-jobs:
+obs:
   email-wordpress-post:
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
 
     steps:
+      - name: Install sendmail
+        run: sudo apt-get update && sudo apt-get install -y sendmail
+
       - name: Send draft blog post via email
         env:
           EMAIL_TO: ${{ secrets.WP_POST_BY_EMAIL }}
