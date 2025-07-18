@@ -19,8 +19,9 @@ jobs:
         run: |
           LOGIN="${{ github.event.pull_request.user.login }}"
           REPO="${{ github.repository }}"
+          SLUG="cla-contributor-${LOGIN//[^a-zA-Z0-9]/-}"
 
           SUBJECT="New CLA Contributor: @$LOGIN"
-          BODY="[status draft]\n\n@$LOGIN signed the CLA and contributed to \`$REPO\`.\nGitHub: https://github.com/$LOGIN"
+          BODY="[status draft]\n[slug $SLUG]\n\n@$LOGIN signed the CLA and contributed to \`$REPO\`.\nGitHub: https://github.com/$LOGIN"
 
           echo -e "Subject: $SUBJECT\n\n$BODY" | sendmail "$EMAIL_TO"
