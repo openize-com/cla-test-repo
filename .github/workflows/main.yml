@@ -10,18 +10,47 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Git user
+        run: |
+          git config user.name "cla-bot"
+          git config user.email "cla-bot@your-domain.com"
+
       - name: Install sendmail
         run: sudo apt-get update && sudo apt-get install -y sendmail
 
-      - name: Send draft blog post via email
+      - name: Send email if not already posted
         env:
           EMAIL_TO: ${{ secrets.WP_POST_BY_EMAIL }}
         run: |
           LOGIN="${{ github.event.pull_request.user.login }}"
           REPO="${{ github.repository }}"
-          SLUG="cla-contributor-${LOGIN//[^a-zA-Z0-9]/-}"
+          TRACK_FILE=".cla-posted.json"
 
+          # Create the tracking file if it doesn't exist
+          if [ ! -f "$TRACK_FILE" ]; then
+            echo "[]" > "$TRACK_FILE"
+          fi
+
+          # Check if contributor already exists
+          if jq -e ". | index(\"$LOGIN\")" "$TRACK_FILE" > /dev/null; then
+            echo "Contributor @$LOGIN already posted. Skipping email."
+            exit 0
+          fi
+
+          # Construct and send the email
           SUBJECT="New CLA Contributor: @$LOGIN"
-          BODY="[status draft]\n[slug $SLUG]\n\n@$LOGIN signed the CLA and contributed to \`$REPO\`.\nGitHub: https://github.com/$LOGIN"
+          BODY="[status draft]\n\n@$LOGIN signed the CLA and contributed to \`$REPO\`.\nGitHub: https://github.com/$LOGIN"
 
           echo -e "Subject: $SUBJECT\n\n$BODY" | sendmail "$EMAIL_TO"
+          echo "Email sent successfully for @$LOGIN"
+
+          # Add user to tracking file
+          jq ". + [\"$LOGIN\"]" "$TRACK_FILE" > tmp.json && mv tmp.json "$TRACK_FILE"
+
+          # Commit the updated file
+          git add "$TRACK_FILE"
+          git commit -m "Track CLA blog post for @$LOGIN"
+          git push
