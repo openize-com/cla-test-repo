@@ -3,3 +3,4 @@ Hello Pakistan
 Hello again.
 Hello again..
 test post to wp.com
+email to post duplicate test
