@@ -1,0 +1,30 @@
+name: Trigger CLA Email Workflow
+
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  trigger-email:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger email workflow
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const login = context.payload.pull_request.user.login;
+            const prNumber = context.payload.pull_request.number;
+            const repo = context.repo.repo;
+            const owner = context.repo.owner;
+
+            await github.rest.actions.createWorkflowDispatch({
+              owner,
+              repo,
+              workflow_id: "email-cla.yml",
+              ref: "main",
+              inputs: {
+                login,
+                prNumber: prNumber.toString()
+              }
+            });
